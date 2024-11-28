@@ -3,7 +3,10 @@ default: rtwn-usbpcap
 
 all: default
 
-rtwn-usbpcap: rtwn-usbpcap.o
+OBJS=rtwn-usbpcap.o libusbpcap.o
+
+rtwn-usbpcap: $(OBJS)
+	$(CC) -o rtwn-usbpcap $(OBJS)
 
 clean:
 	rm -f *.o rtwn-usbpcap
