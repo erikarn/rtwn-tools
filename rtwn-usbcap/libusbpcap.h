@@ -22,9 +22,18 @@ struct header_32 {
 
 #define USB_XFERTYPE_MAX 4
 
-
 extern	const char * usb_errstr(uint32_t error);
 extern	const char * usb_speedstr(uint8_t speed);
 extern	const char * usb_xferstr(uint8_t type);
+
+struct usbpcap {
+	struct usbcap_filehdr uf;
+	int fd;
+};
+
+typedef struct usbpcap usbpcap_t;
+
+extern	usbpcap_t * usbpcap_open(const char *filename);
+extern	void usbpcap_close(usbpcap_t *up);
 
 #endif	/* __LIBUSBPCAP_H__ */

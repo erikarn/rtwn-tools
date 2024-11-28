@@ -212,46 +212,24 @@ int
 main(int argc, const char *argv[])
 {
 	struct usbcap_filehdr uf;
-	int fd;
 	int ret;
 	int datalen;
+	usbpcap_t *up;
 
-	fd = open(argv[1], O_RDONLY);
-	if (fd < 0) {
+	up = usbpcap_open(argv[1]);
+	if (up == NULL) {
 		err(EXIT_FAILURE, "Could not open '%s' for read", argv[1]);
 	}
 
-	/* Open file */
-	ret = read(fd, &uf, sizeof(uf));
-
-	/* Header validation */
-	if (ret != sizeof(uf)) {
-		err(EXIT_FAILURE, "Could not read USB capture file header");
-	}
-	if (le32toh(uf.magic) != USBCAP_FILEHDR_MAGIC) {
-		errx(EX_SOFTWARE, "Invalid magic field (0x%08x) "
-		    "in USB capture file header.",
-		    (unsigned int) le32toh(uf.magic));
-	}
-	if (uf.major != 0) {
-		errx(EX_SOFTWARE, "Invalid major version(%d) "
-		    "field in USB capture file header.", (int)uf.major);
-	}
-
-	if (uf.minor != 3) {
-		errx(EX_SOFTWARE, "Invalid minor version(%d) "
-		    "field in USB capture file header.", (int)uf.minor);
-	}
-
 	/* Read packet loop */
-	while ((ret = read(fd, &datalen, sizeof(int))) == sizeof(int)) {
+	while ((ret = read(up->fd, &datalen, sizeof(int))) == sizeof(int)) {
 		uint8_t *data;
 		datalen = le32toh(datalen);
 		data = malloc(datalen);
 		if (data == NULL)
 			errx(EX_SOFTWARE, "Out of memory.");
 
-		ret = read(fd, data, datalen);
+		ret = read(up->fd, data, datalen);
 		if (ret != datalen) {
 			err(EXIT_FAILURE, "Could not read complete "
 			    "USB data payload");
@@ -261,6 +239,7 @@ main(int argc, const char *argv[])
 		free(data);
 	}
 
-	close(fd); fd = -1;
+	usbpcap_close(up); up = NULL;
+
 	exit(0);
 }
