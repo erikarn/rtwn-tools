@@ -1,3 +1,4 @@
+CFLAGS=-O -Wall -g
 
 default: rtwn-usbpcap
 
