@@ -52,39 +52,133 @@ handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 
 	if (ptr_len == 1) {
 		val = *(uint8_t *) ptr;
+		printf("  VAL: 0x%02x\n", val);
 	} else if (ptr_len == 2) {
 		val = le16toh(*(uint16_t *) ptr);
+		printf("  VAL: 0x%04x\n", val);
 	} else if (ptr_len == 4) {
 		val = le16toh(*(uint32_t *) ptr);
-	} else {
-		return;
+		printf("  VAL: 0x%08x\n", val);
 	}
-
-	printf("  VAL: 0x%08x\n", val);
 }
 
 static void
+handle_usb_urb_control_read(usbpcap_t *up, usbpf_urb_t *urb)
+{
+	/*
+	 * Read requests should have two parts, the device request
+	 * and the read reply.
+	 *
+	 * They're split, so for now we only print out the ones
+	 * we have.
+	 */
+
+	/* XXX methodize */
+	if (urb->hdr.up_frames != 2) {
+		printf("ERROR: %s: expecting 2 frames, got %d frames\n",
+		    __func__,
+		    urb->hdr.up_frames);
+		goto finish;
+	}
+
+	/* XXX methodize */
+	if ((urb->payloads->frame_array[0]->flags & USBPF_FRAMEFLAG_READ) != 0) {
+		printf("ERROR: %s: expected frame 0 to be WRITE",
+		    __func__);
+		goto finish;
+	}
+	/* XXX methodize */
+	if ((urb->payloads->frame_array[1]->flags & USBPF_FRAMEFLAG_READ) == 0) {
+		printf("ERROR: %s: expected frame 1 to be READ",
+		    __func__);
+		goto finish;
+	}
+
+	/* If we have a buffer for 0, print it */
+	if ((urb->payloads->frame_array[0]->buf != NULL)) {
+		handle_usb_subframe_usb_device_request(
+		    urb->payloads->frame_array[0]->buf,
+		    urb->payloads->frame_array[0]->buf_length);
+	}
+
+	/* If we have a buffer for 1, print it */
+	if ((urb->payloads->frame_array[1]->buf != NULL)) {
+		handle_usb_subframe_reg_value(
+		    urb->payloads->frame_array[1]->buf,
+		    urb->payloads->frame_array[1]->buf_length);
+	}
+
+
+finish:
+	usb_urb_free(urb);
+}
+
+static void
+handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *urb)
+{
+	/*
+	 * Write requests should have two parts, the device request
+	 * and value, and then the completion.
+	 */
+
+	/* XXX methodize */
+	if (urb->hdr.up_frames != 2) {
+		printf("ERROR: %s: expecting 2 frames, got %d frames\n",
+		    __func__,
+		    urb->hdr.up_frames);
+		goto finish;
+	}
+
+	/* XXX methodize */
+	if ((urb->payloads->frame_array[0]->flags & USBPF_FRAMEFLAG_READ) != 0) {
+		printf("ERROR: %s: expected frame 0 to be WRITE",
+		    __func__);
+		goto finish;
+	}
+	/* XXX methodize */
+	if ((urb->payloads->frame_array[1]->flags & USBPF_FRAMEFLAG_READ) != 0) {
+		printf("ERROR: %s: expected frame 1 to be WRITE",
+		    __func__);
+		goto finish;
+	}
+
+	/* If we have a buffer for 0, print it */
+	if ((urb->payloads->frame_array[0]->buf != NULL)) {
+		handle_usb_subframe_usb_device_request(
+		    urb->payloads->frame_array[0]->buf,
+		    urb->payloads->frame_array[0]->buf_length);
+	}
+
+	/* If we have a buffer for 1, print it */
+	if ((urb->payloads->frame_array[1]->buf != NULL)) {
+		handle_usb_subframe_usb_device_request(
+		    urb->payloads->frame_array[1]->buf,
+		    urb->payloads->frame_array[1]->buf_length);
+	}
+
+
+finish:
+	usb_urb_free(urb);
+}
+
+
+
+/*
+ * Handle the given URB.
+ *
+ * For now we're only handling EP = 0 (write) and EP = 0x80 (read).
+ */
+static void
 handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 {
-#if 0
-	if (up->up_endpoint == 0) {		/* Write */
-		if (x == 0) {
-			/* Request */
-			handle_usb_subframe_usb_device_request(ptr, ptr_len);
-		} else if (x == 1) {
-			/* Payload */
-			handle_usb_subframe_reg_value(ptr, ptr_len);
-		}
-	} else if (up->up_endpoint == 0x80) {	/* Read */
-		if (x == 0) {
-			/* Request */
-			handle_usb_subframe_usb_device_request(ptr, ptr_len);
-		} else if (x == 1) {
-			/* Payload */
-			handle_usb_subframe_reg_value(ptr, ptr_len);
-		}
+	if (urb->hdr.up_endpoint == 0x80) {
+		handle_usb_urb_control_read(up, urb);
+		return;
 	}
-#endif
+	if (urb->hdr.up_endpoint == 0x00) {
+		handle_usb_urb_control_write(up, urb);
+		return;
+	}
 	usb_urb_free(urb);
 }
 

@@ -427,7 +427,7 @@ usb_frame_payload_list_create(int nframes)
 		goto error;
 	}
 
-	return ul;
+	return (ul);
 
 error:
 	if (ul != NULL)
