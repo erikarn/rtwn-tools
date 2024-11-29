@@ -40,6 +40,7 @@ typedef struct usbpf_frame_payload_list usbpf_frame_payload_list_t;
 
 struct usbpf_urb {
 	struct usbpf_pkthdr hdr;
+	struct timeval tv;
 	usbpf_frame_payload_list_t *payloads;
 };
 typedef struct usbpf_urb usbpf_urb_t;
@@ -73,6 +74,8 @@ extern	void usb_urb_free(usbpf_urb_t *urb);
 
 extern	usbpcap_t * usbpcap_open(const char *filename);
 extern	void usbpcap_close(usbpcap_t *up);
+
+extern	void usbpcap_print_urbpf_header(const usbpf_urb_t *ub);
 
 extern	void usbpcap_iterate_frames(usbpcap_t *up);
 

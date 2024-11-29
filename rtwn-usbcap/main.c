@@ -32,8 +32,10 @@ handle_usb_subframe_usb_device_request(const uint8_t *ptr, int ptr_len)
 {
 	const usb_device_request_t *dw;
 
-	if (ptr_len < sizeof(usb_device_request_t))
+	if (ptr_len != sizeof(usb_device_request_t)) {
+		printf("  INVALID REQ (length %d)\n", ptr_len);
 		return;
+	}
 
 	dw = (const usb_device_request_t *) ptr;
 
@@ -59,6 +61,8 @@ handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 	} else if (ptr_len == 4) {
 		val = le16toh(*(uint32_t *) ptr);
 		printf("  VAL: 0x%08x\n", val);
+	} else {
+		printf("  INVALID LENGTH (%d bytes)\n", ptr_len);
 	}
 }
 
@@ -151,11 +155,10 @@ handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *urb)
 
 	/* If we have a buffer for 1, print it */
 	if ((urb->payloads->frame_array[1]->buf != NULL)) {
-		handle_usb_subframe_usb_device_request(
+		handle_usb_subframe_reg_value(
 		    urb->payloads->frame_array[1]->buf,
 		    urb->payloads->frame_array[1]->buf_length);
 	}
-
 
 finish:
 	usb_urb_free(urb);
@@ -171,6 +174,9 @@ finish:
 static void
 handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 {
+
+	usbpcap_print_urbpf_header(urb);
+
 	if (urb->hdr.up_endpoint == 0x80) {
 		handle_usb_urb_control_read(up, urb);
 		return;

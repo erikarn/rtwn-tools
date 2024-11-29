@@ -174,21 +174,45 @@ usbpcap_close(usbpcap_t *up)
 	free(up);
 }
 
+void
+usbpcap_print_urbpf_header(const usbpf_urb_t *ub)
+{
+	const struct usbpf_pkthdr *up = &ub->hdr;
+	struct tm *tm;
+	size_t len;
+	char buf[64];
+
+	tm = localtime(&ub->tv.tv_sec);
+
+	len = strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+
+	printf("%.*s.%06ld usbus%d.%d %s-%s-EP=%08x,SPD=%s,NFR=%d,SLEN=%d,IVAL=%d%s%s\n",
+	    (int)len, buf, ub->tv.tv_usec,
+	    (int)up->up_busunit, (int)up->up_address,
+	    (up->up_type == USBPF_XFERTAP_SUBMIT) ? "SUBM" : "DONE",
+	    usb_xferstr(up->up_xfertype),
+	    (unsigned int)up->up_endpoint,
+	    usb_speedstr(up->up_speed),
+	    (int)up->up_frames,
+	    (int)(up->up_totlen - USBPF_HDR_LEN -
+	    (USBPF_FRAME_HDR_LEN * up->up_frames)),
+	    (int)up->up_interval,
+	    (up->up_type == USBPF_XFERTAP_DONE) ? ",ERR=" : "",
+	    (up->up_type == USBPF_XFERTAP_DONE) ?
+	    usb_errstr(up->up_error) : "");
+}
+
 static void
 usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
     const uint8_t *ptr, int ptr_len)
 {
 
-	printf("  usb frame: %d bytes\n", ptr_len);
+	//printf("  usb frame: %d bytes\n", ptr_len);
 
 	struct usbpf_pkthdr up_temp;
-	struct timeval tv;
-	struct tm *tm;
 	struct usbpf_pkthdr *up;
 	usbpf_urb_t *urb = NULL;
-	size_t len;
 	uint32_t x;
-	char buf[64];
 
 	ptr += USBPF_HDR_LEN;
 	ptr_len -= USBPF_HDR_LEN;
@@ -212,27 +236,6 @@ usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
 	up->up_packet_count = le32toh(up->up_packet_count);
 	up->up_endpoint = le32toh(up->up_endpoint);
 
-	tv.tv_sec = hdr->ts_sec;
-	tv.tv_usec = hdr->ts_usec;
-	tm = localtime(&tv.tv_sec);
-
-	len = strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-
-	printf("%.*s.%06ld usbus%d.%d %s-%s-EP=%08x,SPD=%s,NFR=%d,SLEN=%d,IVAL=%d%s%s\n",
-	    (int)len, buf, tv.tv_usec,
-	    (int)up->up_busunit, (int)up->up_address,
-	    (up->up_type == USBPF_XFERTAP_SUBMIT) ? "SUBM" : "DONE",
-	    usb_xferstr(up->up_xfertype),
-	    (unsigned int)up->up_endpoint,
-	    usb_speedstr(up->up_speed),
-	    (int)up->up_frames,
-	    (int)(up->up_totlen - USBPF_HDR_LEN -
-	    (USBPF_FRAME_HDR_LEN * up->up_frames)),
-	    (int)up->up_interval,
-	    (up->up_type == USBPF_XFERTAP_DONE) ? ",ERR=" : "",
-	    (up->up_type == USBPF_XFERTAP_DONE) ?
-	    usb_errstr(up->up_error) : "");
-
 	/*
 	 * Create the urb representation to pass to the callback
 	 */
@@ -241,6 +244,8 @@ usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
 		goto error;
 	/* XXX methodize */
 	urb->hdr = *up;
+	urb->tv.tv_sec = hdr->ts_sec;
+	urb->tv.tv_usec = hdr->ts_usec;
 
 	/* Parse any buffers, data or otherwise */
 
@@ -260,10 +265,12 @@ usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
 		framelen = le32toh(uf->length);
 		flags = le32toh(uf->flags);
 
+#if 0
 		printf(" frame[%u] %s %d bytes\n",
 		    (unsigned int)x,
 		    (flags & USBPF_FRAMEFLAG_READ) ? "READ" : "WRITE",
 		    (int)framelen);
+#endif
 
 		if (flags & USBPF_FRAMEFLAG_DATA_FOLLOWS) {
 
@@ -312,7 +319,7 @@ error:
 static void
 usbpcap_handle_packet(usbpcap_t *up, uint8_t *data, int datalen)
 {
-	printf("Read packet: %d bytes\n", datalen);
+	//printf("Read packet: %d bytes\n", datalen);
 
 	struct header_32 temp;
 	uint8_t *ptr;
