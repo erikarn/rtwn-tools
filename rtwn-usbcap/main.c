@@ -126,7 +126,7 @@ handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, in
 	/* R29C_REQ_REGS - 0x5 */
 
 	if (dw->bRequest == 0x5) {
-		printf("%s: register=0x%04x (%d) ", label,
+		printf("%s: 0x%04x (%d) = ", label,
 		    UGETW(dw->wValue), UGETW(dw->wLength));
 		return;
 	}
@@ -146,7 +146,7 @@ handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 
 	if (ptr_len == 1) {
 		val = *(uint8_t *) ptr;
-		printf("VAL: 0x%02x", val);
+		printf("0x%02x", val);
 	} else if (ptr_len == 2) {
 		val = le16toh(*(uint16_t *) ptr);
 		printf("VAL: 0x%04x", val);
@@ -274,6 +274,16 @@ handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *sub_urb,
 finish:
 	return;
 }
+static void
+handle_usb_urb_compl_print_status(usbpf_urb_t *urb)
+{
+	if (urb->hdr.up_type == USBPF_XFERTAP_DONE &&
+	    urb->hdr.up_error != USB_ERR_NORMAL_COMPLETION) {
+		printf(" (%d) (%s)", urb->hdr.up_type,
+		    usb_errstr(urb->hdr.up_error));
+	}
+}
+
 
 /*
  * print/etc the stale URB
@@ -345,12 +355,12 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 	switch (ep) {
 	case 0x80:
 		/* control read */
-		printf("%.*s%06ld: COMP: EP 0x%.02x: ",
+		printf("%.*s%06ld: ",
 		    (int) len,
 		    buf,
-		    tv_comp.tv_usec,
-		    ep);
+		    tv_comp.tv_usec);
 		handle_usb_urb_control_read(up, sub_urb, compl_urb);
+		handle_usb_urb_compl_print_status(compl_urb);
 		printf("\n");
 		break;
 	case 0x00:
@@ -359,12 +369,12 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 		 * Both register and payload are in the submit urb;
 		 * the status is in the completion urb.
 		 */
-		printf("%.*s%06ld: COMP: EP 0x%.02x: ",
+		printf("%.*s%06ld: ",
 		    (int) len,
 		    buf,
-		    tv_comp.tv_usec,
-		    ep);
+		    tv_comp.tv_usec);
 		handle_usb_urb_control_write(up, sub_urb, compl_urb);
+		handle_usb_urb_compl_print_status(compl_urb);
 		printf("\n");
 		break;
 	default:
