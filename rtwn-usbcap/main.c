@@ -28,7 +28,7 @@
 #include "libusbpcap.h"
 
 static void
-handle_usb_subframe_usb_device_request(const uint8_t *ptr, int ptr_len)
+handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, int ptr_len)
 {
 	const usb_device_request_t *dw;
 
@@ -38,6 +38,14 @@ handle_usb_subframe_usb_device_request(const uint8_t *ptr, int ptr_len)
 	}
 
 	dw = (const usb_device_request_t *) ptr;
+
+	/* R29C_REQ_REGS - 0x5 */
+
+	if (dw->bRequest == 0x5) {
+		printf("  %s: register=0x%08x, length=%d\n", label,
+		    UGETW(dw->wValue), UGETW(dw->wLength));
+		return;
+	}
 
 	printf("  REQ: type=0x%02x, request=0x%02x, value=0x%04x, index=0x%04x, length=0x%04x\n",
 	    dw->bmRequestType,
@@ -101,6 +109,7 @@ handle_usb_urb_control_read(usbpcap_t *up, usbpf_urb_t *urb)
 	/* If we have a buffer for 0, print it */
 	if ((urb->payloads->frame_array[0]->buf != NULL)) {
 		handle_usb_subframe_usb_device_request(
+		    "REG READ",
 		    urb->payloads->frame_array[0]->buf,
 		    urb->payloads->frame_array[0]->buf_length);
 	}
@@ -149,6 +158,7 @@ handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *urb)
 	/* If we have a buffer for 0, print it */
 	if ((urb->payloads->frame_array[0]->buf != NULL)) {
 		handle_usb_subframe_usb_device_request(
+		    "REG WRITE",
 		    urb->payloads->frame_array[0]->buf,
 		    urb->payloads->frame_array[0]->buf_length);
 	}
@@ -185,6 +195,9 @@ handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 		handle_usb_urb_control_write(up, urb);
 		return;
 	}
+
+	printf("UNKNOWN EP: 0x%08x\n", urb->hdr.up_endpoint);
+
 	usb_urb_free(urb);
 }
 
