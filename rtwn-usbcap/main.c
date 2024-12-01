@@ -151,7 +151,7 @@ handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 		val = le16toh(*(uint16_t *) ptr);
 		printf("VAL: 0x%04x", val);
 	} else if (ptr_len == 4) {
-		val = le16toh(*(uint32_t *) ptr);
+		val = le32toh(*(uint32_t *) ptr);
 		printf("VAL: 0x%08x", val);
 	} else {
 		printf("{ INVALID LENGTH (%d bytes) }", ptr_len);
