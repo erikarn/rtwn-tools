@@ -27,6 +27,90 @@
 
 #include "libusbpcap.h"
 
+#define	USBPF_URB_COMPLETION_CACHE	32
+
+static usbpf_urb_t *usb_compl[USBPF_URB_COMPLETION_CACHE] = { 0 };
+
+static void
+usb_compl_init(void)
+{
+
+	memset(&usb_compl, 0, sizeof(usb_compl));
+}
+
+static void
+usb_compl_flush(void)
+{
+	int i;
+
+	for (i = 0; i < USBPF_URB_COMPLETION_CACHE; i++) {
+		if (usb_compl[i] != NULL) {
+			usb_urb_free(usb_compl[i]);
+			usb_compl[i] = NULL;
+		}
+	}
+}
+
+/*
+ * Lookup, don't remove.
+ */
+static bool
+usb_compl_lookup(int epid)
+{
+	int i;
+
+	for (i = 0; i < USBPF_URB_COMPLETION_CACHE; i++) {
+		if (usb_compl[i] != NULL && usb_compl[i]->hdr.up_endpoint == epid)
+			return true;
+	}
+	return (false);
+}
+
+/*
+ * Lookup, do remove and return it.
+ * Return NULL if it's not found.
+ */
+static usbpf_urb_t *
+usb_compl_fetch(int epid)
+{
+	int i;
+
+	for (i = 0; i < USBPF_URB_COMPLETION_CACHE; i++) {
+		if (usb_compl[i] != NULL && usb_compl[i]->hdr.up_endpoint == epid) {
+			usbpf_urb_t *urb = usb_compl[i];
+			usb_compl[i] = NULL;
+			return (urb);
+		}
+	}
+	return (NULL);
+}
+
+/*
+ * Add an entry to the completion cache.
+ *
+ * The completion cache assumes a single pending transfer
+ * per endpoint, so if an existing transfer with the same
+ * endpoint exists, this routine returns false.
+ *
+ * It also returns false if there's no space.
+ */
+static bool
+usb_compl_add(usbpf_urb_t *urb)
+{
+	int i;
+
+	if (usb_compl_lookup(urb->hdr.up_endpoint) == true)
+		return (false);
+
+	for (i = 0; i < USBPF_URB_COMPLETION_CACHE; i++) {
+		if (usb_compl[i] == NULL) {
+			usb_compl[i] = urb;
+			return (true);
+		}
+	}
+	return (false);
+}
+
 static void
 handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, int ptr_len)
 {
@@ -184,9 +268,48 @@ finish:
 static void
 handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 {
+//	usbpcap_print_urbpf_header(urb);
 
-	usbpcap_print_urbpf_header(urb);
+	if (urb->hdr.up_type == USBPF_XFERTAP_SUBMIT) {
+		usbpf_urb_t *stale_urb;
 
+		/*
+		 * If it's a SUBMIT, then push it into the
+		 * cache for later.
+		 */
+		stale_urb = usb_compl_fetch(urb->hdr.up_endpoint);
+		if (stale_urb != NULL) {
+			/* XXX TODO: at least print it */
+			usb_urb_free(stale_urb);
+		}
+
+		/* XXX TODO: handle printing the submission if requested */
+
+		/* If we fail to add it, then just free and continue */
+		if (usb_compl_add(urb) == false) {
+			/* XXX TODO: at least print it */
+			usb_urb_free(urb);
+		}
+		return;
+	} else {
+		usbpf_urb_t *sub_urb = NULL;
+
+		/*
+		 * If it's not a SUBMIT, it's a done (error or otherwise)
+		 * so lookup the matching submit urb.
+		 */
+
+		sub_urb = usb_compl_fetch(urb->hdr.up_endpoint);
+
+		/* XXX TODO: handle the submission and completion together now */
+
+		if (sub_urb != NULL)
+			usb_urb_free(sub_urb);
+		usb_urb_free(urb);
+	}
+
+
+#if 0
 	if (urb->hdr.up_endpoint == 0x80) {
 		handle_usb_urb_control_read(up, urb);
 		return;
@@ -199,12 +322,15 @@ handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 	printf("UNKNOWN EP: 0x%08x\n", urb->hdr.up_endpoint);
 
 	usb_urb_free(urb);
+#endif
 }
 
 int
 main(int argc, const char *argv[])
 {
 	usbpcap_t *up;
+
+	usb_compl_init();
 
 	up = usbpcap_open(argv[1]);
 	if (up == NULL) {
@@ -218,6 +344,7 @@ main(int argc, const char *argv[])
 	usbpcap_iterate_frames(up);
 
 	usbpcap_close(up); up = NULL;
+	usb_compl_flush();
 
 	exit(0);
 }

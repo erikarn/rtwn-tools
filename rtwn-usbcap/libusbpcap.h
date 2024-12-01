@@ -56,7 +56,6 @@ struct usbpcap {
 	int fd;
 };
 
-
 extern	const char * usb_errstr(uint32_t error);
 extern	const char * usb_speedstr(uint8_t speed);
 extern	const char * usb_xferstr(uint8_t type);
