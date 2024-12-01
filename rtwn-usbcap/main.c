@@ -117,7 +117,7 @@ handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, in
 	const usb_device_request_t *dw;
 
 	if (ptr_len != sizeof(usb_device_request_t)) {
-		printf("  INVALID REQ (length %d)\n", ptr_len);
+		printf(" INVALID REQ (length %d)", ptr_len);
 		return;
 	}
 
@@ -126,12 +126,12 @@ handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, in
 	/* R29C_REQ_REGS - 0x5 */
 
 	if (dw->bRequest == 0x5) {
-		printf("  %s: register=0x%08x, length=%d\n", label,
+		printf("%s: register=0x%04x (%d) ", label,
 		    UGETW(dw->wValue), UGETW(dw->wLength));
 		return;
 	}
 
-	printf("  REQ: type=0x%02x, request=0x%02x, value=0x%04x, index=0x%04x, length=0x%04x\n",
+	printf(" { REQ: type=0x%02x, request=0x%02x, value=0x%04x, index=0x%04x, length=0x%04x }",
 	    dw->bmRequestType,
 	    dw->bRequest,
 	    UGETW(dw->wValue),
@@ -139,27 +139,28 @@ handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, in
 	    UGETW(dw->wLength));
 }
 
-static void
+void
 handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 {
 	uint32_t val;
 
 	if (ptr_len == 1) {
 		val = *(uint8_t *) ptr;
-		printf("  VAL: 0x%02x\n", val);
+		printf("VAL: 0x%02x", val);
 	} else if (ptr_len == 2) {
 		val = le16toh(*(uint16_t *) ptr);
-		printf("  VAL: 0x%04x\n", val);
+		printf("VAL: 0x%04x", val);
 	} else if (ptr_len == 4) {
 		val = le16toh(*(uint32_t *) ptr);
-		printf("  VAL: 0x%08x\n", val);
+		printf("VAL: 0x%08x", val);
 	} else {
-		printf("  INVALID LENGTH (%d bytes)\n", ptr_len);
+		printf("{ INVALID LENGTH (%d bytes) }", ptr_len);
 	}
 }
 
 static void
-handle_usb_urb_control_read(usbpcap_t *up, usbpf_urb_t *urb)
+handle_usb_urb_control_read(usbpcap_t *up, usbpf_urb_t *sub_urb,
+    usbpf_urb_t *compl_urb)
 {
 	/*
 	 * Read requests should have two parts, the device request
@@ -170,48 +171,64 @@ handle_usb_urb_control_read(usbpcap_t *up, usbpf_urb_t *urb)
 	 */
 
 	/* XXX methodize */
-	if (urb->hdr.up_frames != 2) {
-		printf("ERROR: %s: expecting 2 frames, got %d frames\n",
+	if (sub_urb->hdr.up_frames != 2) {
+		printf("{ ERROR: %s: expecting 2 frames, got %d frames }",
 		    __func__,
-		    urb->hdr.up_frames);
+		    sub_urb->hdr.up_frames);
+		goto finish;
+	}
+	if (compl_urb->hdr.up_frames != 2) {
+		printf("{ ERROR: %s: expecting 2 frames, got %d frames }",
+		    __func__,
+		    compl_urb->hdr.up_frames);
 		goto finish;
 	}
 
+
 	/* XXX methodize */
-	if ((urb->payloads->frame_array[0]->flags & USBPF_FRAMEFLAG_READ) != 0) {
-		printf("ERROR: %s: expected frame 0 to be WRITE",
-		    __func__);
+	if ((sub_urb->payloads->frame_array[0]->flags & USBPF_FRAMEFLAG_READ) != 0) {
+		printf("{ expected frame 0 to be WRITE }");
 		goto finish;
 	}
 	/* XXX methodize */
-	if ((urb->payloads->frame_array[1]->flags & USBPF_FRAMEFLAG_READ) == 0) {
-		printf("ERROR: %s: expected frame 1 to be READ",
-		    __func__);
+	if ((compl_urb->payloads->frame_array[1]->flags & USBPF_FRAMEFLAG_READ) == 0) {
+		printf("{ expected frame 1 to be READ }");
 		goto finish;
 	}
 
 	/* If we have a buffer for 0, print it */
-	if ((urb->payloads->frame_array[0]->buf != NULL)) {
+	if ((sub_urb->payloads->frame_array[0]->buf != NULL)) {
 		handle_usb_subframe_usb_device_request(
 		    "REG READ",
-		    urb->payloads->frame_array[0]->buf,
-		    urb->payloads->frame_array[0]->buf_length);
+		    sub_urb->payloads->frame_array[0]->buf,
+		    sub_urb->payloads->frame_array[0]->buf_length);
 	}
 
 	/* If we have a buffer for 1, print it */
-	if ((urb->payloads->frame_array[1]->buf != NULL)) {
+	/*
+	 * TODO: buf_length here isn't enough to print the
+	 * "right" value length, as it's always 4 bytes.
+	 * We'd need instead to use the device_request wLength
+	 * parameter here.
+	 */
+	if ((compl_urb->payloads->frame_array[1]->buf != NULL)) {
 		handle_usb_subframe_reg_value(
-		    urb->payloads->frame_array[1]->buf,
-		    urb->payloads->frame_array[1]->buf_length);
+		    compl_urb->payloads->frame_array[1]->buf,
+		    compl_urb->payloads->frame_array[1]->buf_length);
 	}
 
 
 finish:
-	usb_urb_free(urb);
+	return;
 }
 
+/*
+ * Called to print the result of a control write, sub_urb and
+ * compl_urb both exist.
+ */
 static void
-handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *urb)
+handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *sub_urb,
+    usbpf_urb_t *compl_urb)
 {
 	/*
 	 * Write requests should have two parts, the device request
@@ -219,46 +236,146 @@ handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *urb)
 	 */
 
 	/* XXX methodize */
-	if (urb->hdr.up_frames != 2) {
+	if (sub_urb->hdr.up_frames != 2) {
 		printf("ERROR: %s: expecting 2 frames, got %d frames\n",
 		    __func__,
-		    urb->hdr.up_frames);
+		    sub_urb->hdr.up_frames);
 		goto finish;
 	}
 
 	/* XXX methodize */
-	if ((urb->payloads->frame_array[0]->flags & USBPF_FRAMEFLAG_READ) != 0) {
-		printf("ERROR: %s: expected frame 0 to be WRITE",
+	if ((sub_urb->payloads->frame_array[0]->flags & USBPF_FRAMEFLAG_READ) != 0) {
+		printf("ERROR: %s: expected frame 0 to be WRITE\n",
 		    __func__);
 		goto finish;
 	}
 	/* XXX methodize */
-	if ((urb->payloads->frame_array[1]->flags & USBPF_FRAMEFLAG_READ) != 0) {
-		printf("ERROR: %s: expected frame 1 to be WRITE",
+	if ((sub_urb->payloads->frame_array[1]->flags & USBPF_FRAMEFLAG_READ) != 0) {
+		printf("ERROR: %s: expected frame 1 to be WRITE\n",
 		    __func__);
 		goto finish;
 	}
 
 	/* If we have a buffer for 0, print it */
-	if ((urb->payloads->frame_array[0]->buf != NULL)) {
+	if ((sub_urb->payloads->frame_array[0]->buf != NULL)) {
 		handle_usb_subframe_usb_device_request(
 		    "REG WRITE",
-		    urb->payloads->frame_array[0]->buf,
-		    urb->payloads->frame_array[0]->buf_length);
+		    sub_urb->payloads->frame_array[0]->buf,
+		    sub_urb->payloads->frame_array[0]->buf_length);
 	}
 
 	/* If we have a buffer for 1, print it */
-	if ((urb->payloads->frame_array[1]->buf != NULL)) {
+	if ((sub_urb->payloads->frame_array[1]->buf != NULL)) {
 		handle_usb_subframe_reg_value(
-		    urb->payloads->frame_array[1]->buf,
-		    urb->payloads->frame_array[1]->buf_length);
+		    sub_urb->payloads->frame_array[1]->buf,
+		    sub_urb->payloads->frame_array[1]->buf_length);
 	}
 
 finish:
-	usb_urb_free(urb);
+	return;
 }
 
+/*
+ * print/etc the stale URB
+ *
+ * The caller will free it afterwards.
+ */
+static void
+handle_urb_stale_complete(usbpcap_t *ub, usbpf_urb_t *urb)
+{
+	/* TODO */
+}
 
+/*
+ * print/etc the submitted URB.
+ *
+ * if is_error is true then the URB couldn't be added
+ * into the completion cache, so we should print what we have.
+ *
+ * The caller will free it afterwards.
+ */
+static void
+handle_urb_submission(usbpcap_t *up, usbpf_urb_t *urb, bool is_error)
+{
+	/* EP 0x80 = control read */
+	/* EP 0x00 = control write */
+
+	/* EP 0x84 = bulk read (rx data) */
+
+	/* EP 0x08 = bulk write (tx data) */
+	/* TODO: more bulk EP */
+}
+
+/*
+ * print/etc the submitted + completed URB.
+ *
+ * The caller will free them afterwards.
+ *
+ * Note: compl_urb will always be set, but sub_urb may not be!
+ */
+static void
+handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_urb)
+{
+	struct timeval tv_sub = { 0 }, tv_comp = { 0 };
+	struct tm *tm;
+	size_t len;
+	int ep;
+	char buf[64];
+
+	ep = compl_urb->hdr.up_endpoint;
+	if (sub_urb != NULL)
+		tv_sub = sub_urb->tv;
+	tv_comp = compl_urb->tv;
+
+	tm = localtime(&tv_comp.tv_sec);
+	len = strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+
+	if (sub_urb == NULL) {
+		printf("%.*s%06ld: COMP: EP: 0x%.02x: no matching SUBMIT\n",
+		    (int) len,
+		    buf,
+		    tv_comp.tv_usec,
+		    ep);
+
+	}
+
+	/* EP 0x80 = control read */
+	/* EP 0x00 = control write */
+
+	switch (ep) {
+	case 0x80:
+		/* control read */
+		printf("%.*s%06ld: COMP: EP 0x%.02x: ",
+		    (int) len,
+		    buf,
+		    tv_comp.tv_usec,
+		    ep);
+		handle_usb_urb_control_read(up, sub_urb, compl_urb);
+		printf("\n");
+		break;
+	case 0x00:
+		/* control write */
+		/*
+		 * Both register and payload are in the submit urb;
+		 * the status is in the completion urb.
+		 */
+		printf("%.*s%06ld: COMP: EP 0x%.02x: ",
+		    (int) len,
+		    buf,
+		    tv_comp.tv_usec,
+		    ep);
+		handle_usb_urb_control_write(up, sub_urb, compl_urb);
+		printf("\n");
+		break;
+	default:
+		printf("%.*s%06ld: COMP: EP 0x%.02x: unknown EP\n",
+		    (int) len,
+		    buf,
+		    tv_comp.tv_usec,
+		    ep);
+		break;
+	}
+}
 
 /*
  * Handle the given URB.
@@ -279,17 +396,17 @@ handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 		 */
 		stale_urb = usb_compl_fetch(urb->hdr.up_endpoint);
 		if (stale_urb != NULL) {
-			/* XXX TODO: at least print it */
+			handle_urb_stale_complete(up, stale_urb);
 			usb_urb_free(stale_urb);
 		}
 
-		/* XXX TODO: handle printing the submission if requested */
 
 		/* If we fail to add it, then just free and continue */
 		if (usb_compl_add(urb) == false) {
-			/* XXX TODO: at least print it */
+			handle_urb_submission(up, urb, true);
 			usb_urb_free(urb);
 		}
+		handle_urb_submission(up, urb, false);
 		return;
 	} else {
 		usbpf_urb_t *sub_urb = NULL;
@@ -298,10 +415,8 @@ handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 		 * If it's not a SUBMIT, it's a done (error or otherwise)
 		 * so lookup the matching submit urb.
 		 */
-
 		sub_urb = usb_compl_fetch(urb->hdr.up_endpoint);
-
-		/* XXX TODO: handle the submission and completion together now */
+		handle_urb_completion(up, sub_urb, urb);
 
 		if (sub_urb != NULL)
 			usb_urb_free(sub_urb);
