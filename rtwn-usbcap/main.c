@@ -27,6 +27,8 @@
 
 #include "libusbpcap.h"
 
+#include "if_rtwn_desc.h"
+
 #define	USBPF_URB_COMPLETION_CACHE	32
 
 static usbpf_urb_t *usb_compl[USBPF_URB_COMPLETION_CACHE] = { 0 };
@@ -111,6 +113,72 @@ usb_compl_add(usbpf_urb_t *urb)
 	return (false);
 }
 
+/*
+ * TODO: handle fragmented RX packets!
+ *
+ * rxdw0 -> rxdw4, tsf_low
+ */
+static void
+handle_usb_bulk_rx_frame(usbpcap_t *up, const usbpf_urb_t *urb)
+{
+	const uint8_t *ptr, *buf;
+	int buf_len, ptr_len = 0;
+
+	if (urb->hdr.up_frames != 1 || urb->payloads->num_frames != 1) {
+		printf("{ ERROR: %s: expecting 1 frames, got %d frames, %d bufs }",
+		    __func__,
+		    urb->hdr.up_frames,
+		    urb->payloads->num_frames);
+		goto finish;
+	}
+
+	buf = urb->payloads->frame_array[0]->buf;
+	buf_len = urb->payloads->frame_array[0]->buf_length;
+	ptr = buf;
+	ptr_len = buf_len;
+
+	printf("pkt: start; %d bytes in frame\n", buf_len);
+
+	while (ptr_len > 0) {
+		struct rtwn_rx_stat_common rxs = { 0 };
+		int pkt_len;
+		int info_sz;
+		int tot_len;
+
+		if (ptr_len < sizeof(rxs)) {
+			printf(" pkt: short (%d bytes)\n", ptr_len);
+			break;
+		}
+
+		/* Decode rx status */
+		memcpy(&rxs, ptr, sizeof(rxs));
+
+		pkt_len = le32toh(rxs.rxdw0) & 0x3fff;
+		info_sz = ((le32toh(rxs.rxdw0) >> 16) & 0xf) * 8;
+		tot_len = sizeof(rxs) + pkt_len + info_sz;
+
+		printf(" pkt: dw 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x tsf 0x%08x\n",
+		    le32toh(rxs.rxdw0),
+		    le32toh(rxs.rxdw1),
+		    le32toh(rxs.rxdw2),
+		    le32toh(rxs.rxdw3),
+		    le32toh(rxs.rxdw4),
+		    le32toh(rxs.tsf_low));
+
+		printf(" pkt len = %d, info sz = %d\n", pkt_len, info_sz);
+
+		/* XXX TODO: RX padding to next packet? It's chipset specific */
+
+		ptr += roundup2(tot_len, 128);
+		ptr_len -= roundup2(tot_len, 128);
+	}
+
+finish:
+	printf("pkt: finish; %d bytes unhandled\n", ptr_len);
+	return;
+
+}
+
 static void
 handle_usb_subframe_usb_device_request(const char *label, const uint8_t *ptr, int ptr_len)
 {
@@ -149,10 +217,10 @@ handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 		printf("0x%02x", val);
 	} else if (ptr_len == 2) {
 		val = le16toh(*(uint16_t *) ptr);
-		printf("VAL: 0x%04x", val);
+		printf("0x%04x", val);
 	} else if (ptr_len == 4) {
 		val = le32toh(*(uint32_t *) ptr);
-		printf("VAL: 0x%08x", val);
+		printf("0x%08x", val);
 	} else {
 		printf("{ INVALID LENGTH (%d bytes) }", ptr_len);
 	}
@@ -346,13 +414,17 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 		    buf,
 		    tv_comp.tv_usec,
 		    ep);
-
 	}
 
 	/* EP 0x80 = control read */
 	/* EP 0x00 = control write */
 
 	switch (ep) {
+	case 0x81:
+		/* bulk RX read */
+		handle_usb_bulk_rx_frame(up, compl_urb);
+		printf("\n");
+		break;
 	case 0x80:
 		/* control read */
 		printf("%.*s%06ld: ",
