@@ -287,7 +287,7 @@ usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
 
 		/* Populate our buffer, with optional data */
 		usbpf_frame_payload_t *ufp =
-		    usb_frame_payload_create(framelen);
+		    usb_frame_payload_create(tot_frame_len);
 		if (ufp == NULL)
 			goto error;
 
@@ -295,9 +295,9 @@ usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
 		ufp->ep_id = up->up_endpoint;
 		ufp->frame_id = x;
 		ufp->flags = flags;
-		ufp->frame_length = tot_frame_len;
+		ufp->frame_length = framelen;
 		if (buf != NULL)
-			memcpy(ufp->buf, buf, framelen);
+			memcpy(ufp->buf, buf, tot_frame_len);
 
 		usb_frame_payload_list_add(urb->payloads, ufp, x);
 	}
