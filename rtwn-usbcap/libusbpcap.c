@@ -304,7 +304,7 @@ usbpcap_handle_usb_frame(usbpcap_t *uh, const struct header_32 *hdr,
 
 	/* Call our callback */
 	if (uh->iter_cb != NULL)
-		(uh->iter_cb)(uh, urb);
+		(uh->iter_cb)(uh, uh->iter_cbdata, urb);
 	else
 		usb_urb_free(urb);
 

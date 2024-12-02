@@ -1,10 +1,10 @@
-CFLAGS=-Wall -g
+CFLAGS=-Wall -Werror -g
 
 default: rtwn-usbpcap
 
 all: default
 
-OBJS=main.o libusbpcap.o
+OBJS=main.o libusbpcap.o chipset_rtl8192.o chipset_rtl8812.o
 
 rtwn-usbpcap: $(OBJS)
 	$(CC) -o rtwn-usbpcap $(OBJS)

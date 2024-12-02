@@ -26,8 +26,9 @@
 #include <err.h>
 
 #include "libusbpcap.h"
-
 #include "if_rtwn_desc.h"
+
+#include "main.h"
 
 #define	USBPF_URB_COMPLETION_CACHE	32
 
@@ -119,7 +120,7 @@ usb_compl_add(usbpf_urb_t *urb)
  * rxdw0 -> rxdw4, tsf_low
  */
 static void
-handle_usb_bulk_rx_frame(usbpcap_t *up, const usbpf_urb_t *urb)
+handle_usb_bulk_rx_frame(rtwn_app_t *ra, const usbpf_urb_t *urb)
 {
 	const uint8_t *ptr, *buf;
 	int buf_len, ptr_len = 0;
@@ -167,10 +168,14 @@ handle_usb_bulk_rx_frame(usbpcap_t *up, const usbpf_urb_t *urb)
 
 		printf(" pkt len = %d, info sz = %d\n", pkt_len, info_sz);
 
-		/* XXX TODO: RX padding to next packet? It's chipset specific */
-
-		ptr += roundup2(tot_len, 128);
-		ptr_len -= roundup2(tot_len, 128);
+		/*
+		 * TODO: also need to handle packet fragmentation;
+		 * ie if a RX frame straddles >1 RX frame.
+		 */
+		/* Note: reusing tot_len */
+		tot_len = ra->ops->rx_align(ra, tot_len, ptr_len);
+		ptr += tot_len;
+		ptr_len -= tot_len;
 	}
 
 finish:
@@ -227,7 +232,7 @@ handle_usb_subframe_reg_value(const uint8_t *ptr, int ptr_len)
 }
 
 static void
-handle_usb_urb_control_read(usbpcap_t *up, usbpf_urb_t *sub_urb,
+handle_usb_urb_control_read(rtwn_app_t *ra, usbpf_urb_t *sub_urb,
     usbpf_urb_t *compl_urb)
 {
 	/*
@@ -295,7 +300,7 @@ finish:
  * compl_urb both exist.
  */
 static void
-handle_usb_urb_control_write(usbpcap_t *up, usbpf_urb_t *sub_urb,
+handle_usb_urb_control_write(rtwn_app_t *ra, usbpf_urb_t *sub_urb,
     usbpf_urb_t *compl_urb)
 {
 	/*
@@ -359,7 +364,7 @@ handle_usb_urb_compl_print_status(usbpf_urb_t *urb)
  * The caller will free it afterwards.
  */
 static void
-handle_urb_stale_complete(usbpcap_t *ub, usbpf_urb_t *urb)
+handle_urb_stale_complete(rtwn_app_t *ra, usbpf_urb_t *urb)
 {
 	/* TODO */
 }
@@ -373,7 +378,7 @@ handle_urb_stale_complete(usbpcap_t *ub, usbpf_urb_t *urb)
  * The caller will free it afterwards.
  */
 static void
-handle_urb_submission(usbpcap_t *up, usbpf_urb_t *urb, bool is_error)
+handle_urb_submission(rtwn_app_t *ra, usbpf_urb_t *urb, bool is_error)
 {
 	/* EP 0x80 = control read */
 	/* EP 0x00 = control write */
@@ -392,7 +397,8 @@ handle_urb_submission(usbpcap_t *up, usbpf_urb_t *urb, bool is_error)
  * Note: compl_urb will always be set, but sub_urb may not be!
  */
 static void
-handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_urb)
+handle_urb_completion(rtwn_app_t *ra, usbpf_urb_t *sub_urb,
+    usbpf_urb_t *compl_urb)
 {
 	struct timeval tv_sub = { 0 }, tv_comp = { 0 };
 	struct tm *tm;
@@ -404,6 +410,8 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 	if (sub_urb != NULL)
 		tv_sub = sub_urb->tv;
 	tv_comp = compl_urb->tv;
+
+	(void) tv_sub;
 
 	tm = localtime(&tv_comp.tv_sec);
 	len = strftime(buf, sizeof(buf), "%H:%M:%S", tm);
@@ -421,8 +429,12 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 
 	switch (ep) {
 	case 0x81:
+	case 0x82:
+	case 0x83:
+	case 0x84:
+	case 0x85:
 		/* bulk RX read */
-		handle_usb_bulk_rx_frame(up, compl_urb);
+		handle_usb_bulk_rx_frame(ra, compl_urb);
 		printf("\n");
 		break;
 	case 0x80:
@@ -431,7 +443,7 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 		    (int) len,
 		    buf,
 		    tv_comp.tv_usec);
-		handle_usb_urb_control_read(up, sub_urb, compl_urb);
+		handle_usb_urb_control_read(ra, sub_urb, compl_urb);
 		handle_usb_urb_compl_print_status(compl_urb);
 		printf("\n");
 		break;
@@ -445,7 +457,7 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
 		    (int) len,
 		    buf,
 		    tv_comp.tv_usec);
-		handle_usb_urb_control_write(up, sub_urb, compl_urb);
+		handle_usb_urb_control_write(ra, sub_urb, compl_urb);
 		handle_usb_urb_compl_print_status(compl_urb);
 		printf("\n");
 		break;
@@ -465,8 +477,10 @@ handle_urb_completion(usbpcap_t *up, usbpf_urb_t *sub_urb, usbpf_urb_t *compl_ur
  * For now we're only handling EP = 0 (write) and EP = 0x80 (read).
  */
 static void
-handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
+handle_usb_urb(usbpcap_t *up, void *cbdata, usbpf_urb_t *urb)
 {
+	rtwn_app_t *ra = (rtwn_app_t *) cbdata;
+
 //	usbpcap_print_urbpf_header(urb);
 
 	if (urb->hdr.up_type == USBPF_XFERTAP_SUBMIT) {
@@ -478,17 +492,17 @@ handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 		 */
 		stale_urb = usb_compl_fetch(urb->hdr.up_endpoint);
 		if (stale_urb != NULL) {
-			handle_urb_stale_complete(up, stale_urb);
+			handle_urb_stale_complete(ra, stale_urb);
 			usb_urb_free(stale_urb);
 		}
 
 
 		/* If we fail to add it, then just free and continue */
 		if (usb_compl_add(urb) == false) {
-			handle_urb_submission(up, urb, true);
+			handle_urb_submission(ra, urb, true);
 			usb_urb_free(urb);
 		}
-		handle_urb_submission(up, urb, false);
+		handle_urb_submission(ra, urb, false);
 		return;
 	} else {
 		usbpf_urb_t *sub_urb = NULL;
@@ -498,49 +512,36 @@ handle_usb_urb(usbpcap_t *up, usbpf_urb_t *urb)
 		 * so lookup the matching submit urb.
 		 */
 		sub_urb = usb_compl_fetch(urb->hdr.up_endpoint);
-		handle_urb_completion(up, sub_urb, urb);
+		handle_urb_completion(ra, sub_urb, urb);
 
 		if (sub_urb != NULL)
 			usb_urb_free(sub_urb);
 		usb_urb_free(urb);
 	}
-
-
-#if 0
-	if (urb->hdr.up_endpoint == 0x80) {
-		handle_usb_urb_control_read(up, urb);
-		return;
-	}
-	if (urb->hdr.up_endpoint == 0x00) {
-		handle_usb_urb_control_write(up, urb);
-		return;
-	}
-
-	printf("UNKNOWN EP: 0x%08x\n", urb->hdr.up_endpoint);
-
-	usb_urb_free(urb);
-#endif
 }
 
 int
 main(int argc, const char *argv[])
 {
-	usbpcap_t *up;
+	rtwn_app_t ra = { 0 };
 
 	usb_compl_init();
 
-	up = usbpcap_open(argv[1]);
-	if (up == NULL) {
+	ra.up = usbpcap_open(argv[1]);
+	if (ra.up == NULL) {
 		err(EXIT_FAILURE, "Could not open '%s' for read", argv[1]);
 	}
 
 	/* XXX methodize */
-	up->iter_cb = handle_usb_urb;
+	ra.up->iter_cb = handle_usb_urb;
+	ra.up->iter_cbdata = &ra;
+
+	chipset_rtl8812_init(&ra);
 
 	/* Read packet loop */
-	usbpcap_iterate_frames(up);
+	usbpcap_iterate_frames(ra.up);
 
-	usbpcap_close(up); up = NULL;
+	usbpcap_close(ra.up); ra.up = NULL;
 	usb_compl_flush();
 
 	exit(0);

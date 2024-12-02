@@ -48,11 +48,12 @@ typedef struct usbpf_urb usbpf_urb_t;
 typedef struct usbpcap usbpcap_t;
 
 typedef void usbpcap_packet_iterate_callback_t(usbpcap_t *up,
-	usbpf_urb_t *urb);
+	void *cbdata, usbpf_urb_t *urb);
 
 struct usbpcap {
 	struct usbcap_filehdr uf;
 	usbpcap_packet_iterate_callback_t *iter_cb;
+	void *iter_cbdata;
 	int fd;
 };
 
