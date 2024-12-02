@@ -437,14 +437,66 @@ handle_usb_urb(usbpcap_t *up, void *cbdata, usbpf_urb_t *urb)
 	}
 }
 
+static void
+usage(void)
+{
+	printf("Usage: rtwn-usbpcap [-f <filename>] [-c <chipset>]\n");
+	printf("       -f <filename> : File name of usbpcap to parse\n");
+	printf("       -c <chipset> : Realtek USB chipset family to use\n");
+	printf("\n");
+	printf("Supported chipset families:\n");
+	printf("\n");
+	printf("  rtl8192 rtl8812\n");
+	exit(EX_USAGE);
+}
+
 int
-main(int argc, const char *argv[])
+main(int argc, char * const argv[])
 {
 	rtwn_app_t ra = { 0 };
+	const char *filename = NULL, *chipset = NULL;
+	int ch;
+
+	while ((ch = getopt(argc, argv, "c:f:")) != -1) {
+		switch (ch) {
+		case 'c':
+			chipset = strdup(optarg);
+			break;
+		case 'f':
+			filename = strdup(optarg);
+			break;
+		case '?':
+		case 'h':
+		default:
+			usage();
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	if (filename == NULL) {
+		printf("ERROR: need a filename\n");
+		return (127);
+	}
+	if (chipset == NULL) {
+		printf("ERROR: need a chipset\n");
+		return (127);
+	}
+
+	if (strcmp("rtl8812", chipset) == 0) {
+		chipset_rtl8812_init(&ra);
+	} else if (strcmp("rtl8192", chipset) == 0) {
+		chipset_rtl8192_init(&ra);
+	} else {
+		printf("ERROR: unsupported chipset (%s)\n", chipset);
+		return (127);
+	}
+
+
 
 	usb_compl_init();
 
-	ra.up = usbpcap_open(argv[1]);
+	ra.up = usbpcap_open(filename);
 	if (ra.up == NULL) {
 		err(EXIT_FAILURE, "Could not open '%s' for read", argv[1]);
 	}
@@ -452,8 +504,6 @@ main(int argc, const char *argv[])
 	/* XXX methodize */
 	ra.up->iter_cb = handle_usb_urb;
 	ra.up->iter_cbdata = &ra;
-
-	chipset_rtl8812_init(&ra);
 
 	/* Read packet loop */
 	usbpcap_iterate_frames(ra.up);
