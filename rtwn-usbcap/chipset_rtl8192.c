@@ -135,7 +135,7 @@ chipset_rtl8192_tx_decode(rtwn_app_t *ra, const usbpf_urb_t *urb)
 	printf(" TX: txdw3: (0x%04x)\n", le16toh(txs.txdw3));
 	printf(" TX: txdseq: %d\n", le16toh(txs.txdseq));
 
-	printf(" TX: txdw4: (0x%08x): rtsrate 0x%d seq_sel %d port_id %d data_sco %d rts_sco %d\n",
+	printf(" TX: txdw4: (0x%08x): rtsrate 0x%d seq_sel %d port_id %d data_sco %d rts_sco %d %s%s%s%s%s%s%s%s%s%s%s\n",
 	    le32toh(txs.txdw4),
 	    le32toh(txs.txdw4) & 0x1f,
 	    (le32toh(txs.txdw4) >> 6) & 0x3,
@@ -161,6 +161,7 @@ chipset_rtl8192_tx_decode(rtwn_app_t *ra, const usbpf_urb_t *urb)
 	    (le32toh(txs.txdw5) >> 13) & 0xf,
 	    (le32toh(txs.txdw5) >> 18) & 0x3f,
 	    (le32toh(txs.txdw5) >> 24) & 0xff,
+	    le32toh(txs.txdw5) & R92C_TXDW5_RTY_LMT_ENA ? " RTY_LMT_ENA" :  "",
 	    le32toh(txs.txdw5) & R92C_TXDW5_SGI ? " SGI" :  "");
 
 	printf(" TX: txdw6: (0x%08x): max_agg %d\n",
