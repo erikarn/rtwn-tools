@@ -8,10 +8,12 @@ typedef int usb_chipset_rx_buf_align(rtwn_app_t *ra, int pkt_len,
     int usb_frame_len);
 typedef void usb_chipset_rx_decode(rtwn_app_t *ra, const uint8_t *buf,
     int len);
+typedef void usb_chipset_tx_decode(rtwn_app_t *ra, const usbpf_urb_t *urb);
 
 struct usb_chipset_ops {
 	usb_chipset_rx_buf_align *rx_align;
 	usb_chipset_rx_decode *rx_decode;
+	usb_chipset_tx_decode *tx_decode;
 };
 
 struct rtwn_app {

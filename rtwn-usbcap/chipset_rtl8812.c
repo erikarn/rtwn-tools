@@ -89,9 +89,11 @@ chipset_rtl8812_rx_decode(rtwn_app_t *ra, const uint8_t *buf, int len)
 	    (le32toh(rxs.rxdw1) & R12A_RXDW4_LDPC) ? " LDPC" : "",
 	    (le32toh(rxs.rxdw1) & R12A_RXDW4_STBC) ? " STBC" : "",
 	    bw);
+}
 
-
-
+static void
+chipset_rtl8812_tx_decode(rtwn_app_t *ra, const usbpf_urb_t *urb)
+{
 }
 
 /*
@@ -101,6 +103,7 @@ chipset_rtl8812_rx_decode(rtwn_app_t *ra, const uint8_t *buf, int len)
 static struct usb_chipset_ops chipset_rtl8812_ops = {
 	.rx_align = chipset_rtl8812_rx_align,
 	.rx_decode = chipset_rtl8812_rx_decode,
+	.tx_decode = chipset_rtl8812_tx_decode,
 };
 
 void

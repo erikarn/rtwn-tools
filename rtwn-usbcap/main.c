@@ -31,6 +31,22 @@
 
 #include "main.h"
 
+static void
+handle_usb_bulk_tx_frame(rtwn_app_t *ra, const usbpf_urb_t *urb)
+{
+
+	if (urb->hdr.up_frames != 1 || urb->payloads->num_frames != 1) {
+		printf("{ ERROR: %s: expecting 1 frames, got %d frames, %d bufs }",
+		    __func__,
+		    urb->hdr.up_frames,
+		    urb->payloads->num_frames);
+		return;
+	}
+
+	ra->ops->tx_decode(ra, urb);
+}
+
+
 /*
  * TODO: handle fragmented RX packets!
  *
@@ -302,6 +318,9 @@ handle_urb_stale_complete(rtwn_app_t *ra, usbpf_urb_t *urb)
 static void
 handle_urb_submission(rtwn_app_t *ra, usbpf_urb_t *urb, bool is_error)
 {
+	int ep;
+
+	ep = urb->hdr.up_endpoint;
 	/* EP 0x80 = control read */
 	/* EP 0x00 = control write */
 
@@ -309,6 +328,17 @@ handle_urb_submission(rtwn_app_t *ra, usbpf_urb_t *urb, bool is_error)
 
 	/* EP 0x08 = bulk write (tx data) */
 	/* TODO: more bulk EP */
+	switch (ep) {
+	case 0x01:
+	case 0x02:
+	case 0x03:
+	case 0x04:
+		handle_usb_bulk_tx_frame(ra, urb);
+		printf("\n");
+		break;
+	default:
+		break;
+	}
 }
 
 /*
@@ -382,6 +412,12 @@ handle_urb_completion(rtwn_app_t *ra, usbpf_urb_t *sub_urb,
 		handle_usb_urb_control_write(ra, sub_urb, compl_urb);
 		handle_usb_urb_compl_print_status(compl_urb);
 		printf("\n");
+		break;
+	case 0x01:
+	case 0x02:
+	case 0x03:
+	case 0x04:
+		/* TODO: log if error */
 		break;
 	default:
 		printf("%.*s%06ld: COMP: EP 0x%.02x: unknown EP\n",
