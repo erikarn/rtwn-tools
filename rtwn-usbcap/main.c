@@ -75,6 +75,7 @@ handle_usb_bulk_rx_frame(rtwn_app_t *ra, const usbpf_urb_t *urb)
 		info_sz = ((le32toh(rxs.rxdw0) >> 16) & 0xf) * 8;
 		tot_len = sizeof(rxs) + pkt_len + info_sz;
 
+#if 0
 		printf(" pkt: dw 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x tsf 0x%08x\n",
 		    le32toh(rxs.rxdw0),
 		    le32toh(rxs.rxdw1),
@@ -84,6 +85,10 @@ handle_usb_bulk_rx_frame(rtwn_app_t *ra, const usbpf_urb_t *urb)
 		    le32toh(rxs.tsf_low));
 
 		printf(" pkt len = %d, info sz = %d\n", pkt_len, info_sz);
+#endif
+
+		ra->ops->rx_decode(ra, buf, tot_len);
+
 
 		/*
 		 * TODO: also need to handle packet fragmentation;
