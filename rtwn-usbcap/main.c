@@ -333,6 +333,7 @@ handle_urb_submission(rtwn_app_t *ra, usbpf_urb_t *urb, bool is_error)
 	case 0x02:
 	case 0x03:
 	case 0x04:
+	case 0x08:
 		handle_usb_bulk_tx_frame(ra, urb);
 		printf("\n");
 		break;

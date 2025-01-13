@@ -30,6 +30,7 @@
 
 #include "if_rtwn_desc.h"
 #include "r12a_rx_desc.h"
+#include "r12a_tx_desc.h"
 
 #include "main.h"
 
@@ -94,6 +95,32 @@ chipset_rtl8812_rx_decode(rtwn_app_t *ra, const uint8_t *buf, int len)
 static void
 chipset_rtl8812_tx_decode(rtwn_app_t *ra, const usbpf_urb_t *urb)
 {
+	struct r12a_tx_desc txs;
+	const uint8_t *buf;
+	int len;
+
+	/* XXX for now, assume a single buffer in the URB */
+	buf = urb->payloads->frame_array[0]->buf;
+	len = urb->payloads->frame_array[0]->buf_length;
+
+	if (len < sizeof(txs))
+		return;
+
+	memcpy(&txs, buf, sizeof(txs));
+
+	printf("TX: pktlen=%d offset=%d %s%s%s%s\n",
+            le16toh(txs.pktlen),
+            txs.offset,
+            (txs.offset & R12A_FLAGS0_BMCAST) ? " BMCAST" : "",
+            (txs.offset & R12A_FLAGS0_LSG) ? " LSG" : "",
+            (txs.offset & R12A_FLAGS0_FSG) ? " FSG" : "",
+            (txs.offset & R12A_FLAGS0_OWN) ? " OWN" : "");
+	printf("  0x%08x 0x%08x 0x%08x 0x%08x 0x%08x\n",
+	    txs.txdw1, txs.txdw2, txs.txdw3, txs.txdw4, txs.txdw5);
+
+	printf("  0x%08x 0x%08x 0x%08x 0x%08x\n",
+	    txs.txdw6, txs.reserved, txs.txdw8, txs.txdw9);
+
 }
 
 /*
